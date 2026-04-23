@@ -49,15 +49,22 @@ def llm_plan(user):
     """
 
 
-    res = client.models.generate_content(
-        model="models/gemini-2.0-flash",
-        contents=prompt
-    )
+    from google.genai import errors
 
     try:
-        # Cleaner extraction and safer json.loads instead of eval
+        res = client.models.generate_content(
+            model="models/gemini-2.0-flash",
+            contents=prompt
+        )
+        # Cleaner extraction and safer json.loads
         text = res.text.strip().removeprefix("```json").removesuffix("```").strip()
         return json.loads(text)
+    except errors.ClientError as e:
+        if "429" in str(e):
+            return {"type": "error", "msg": "☕ Quota hit! Gemini needs a 30s break. Please try again in a moment."}
+        return {"type": "error", "msg": f"API Error: {str(e)}"}
+    except Exception as e:
+        return {"type": "error", "msg": f"Unexpected Error: {str(e)}"}
     except Exception as e:
         return {"type": "error", "msg": f"LLM Parse Error: {str(e)}"}
 
