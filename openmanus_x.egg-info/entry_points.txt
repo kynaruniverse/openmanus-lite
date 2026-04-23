@@ -1,0 +1,2 @@
+[console_scripts]
+omx = main:run_from_cli

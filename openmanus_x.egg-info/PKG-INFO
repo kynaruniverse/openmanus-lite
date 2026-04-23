@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: openmanus-x
+Version: 0.1
+License-File: LICENSE
+Requires-Dist: google-genai
+Dynamic: license-file
+Dynamic: requires-dist

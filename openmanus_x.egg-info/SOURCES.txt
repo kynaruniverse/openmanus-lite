@@ -1,0 +1,9 @@
+LICENSE
+README.md
+setup.py
+openmanus_x.egg-info/PKG-INFO
+openmanus_x.egg-info/SOURCES.txt
+openmanus_x.egg-info/dependency_links.txt
+openmanus_x.egg-info/entry_points.txt
+openmanus_x.egg-info/requires.txt
+openmanus_x.egg-info/top_level.txt
