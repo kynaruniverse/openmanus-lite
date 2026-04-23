@@ -1,156 +1,201 @@
 import os
+import json
+import asyncio
 import subprocess
-import time
+from router import route
 from google import genai
-from google.genai.errors import ServerError
+
+# ---------------- CONFIG ----------------
 
 API_KEY = os.environ.get("GEMINI_API_KEY")
-if not API_KEY:
-    raise ValueError("GEMINI_API_KEY not set")
+client = genai.Client(api_key=API_KEY) if API_KEY else None
 
-client = genai.Client(api_key=API_KEY)
-
-REPO_PATH = os.getcwd()
-WORKSPACE = os.path.join(REPO_PATH, "workspace")
-
+REPO = os.getcwd()
+WORKSPACE = os.path.join(REPO, "workspace")
 os.makedirs(WORKSPACE, exist_ok=True)
 
-print("OpenManus Autonomous Agent (PHASE 3)")
-print(f"Repo: {REPO_PATH}\n")
+MEM_FILE = os.path.join(REPO, "agent_memory_v7.json")
+
+# ---------------- MEMORY ----------------
+
+def load_memory():
+    if not os.path.exists(MEM_FILE):
+        return {"tasks": []}
+    return json.load(open(MEM_FILE))
+
+def save_memory(m):
+    with open(MEM_FILE, "w") as f:
+        json.dump(m, f, indent=2)
+
+MEMORY = load_memory()
+
+# ---------------- TOOL LAYER ----------------
 
 def run(cmd):
-    return subprocess.run(cmd, cwd=REPO_PATH, capture_output=True, text=True)
-
-def git(cmd):
-    result = run(["git"] + cmd)
-    return result.stdout + result.stderr
-
-# ---------------- SAFE FILE SYSTEM ----------------
-
-def safe_path(path):
-    # force everything into workspace
-    return os.path.join(WORKSPACE, path.lstrip("/"))
+    return subprocess.run(cmd, cwd=REPO, capture_output=True, text=True).stdout
 
 def write_file(path, content):
-    full_path = safe_path(path)
-    os.makedirs(os.path.dirname(full_path), exist_ok=True)
-    with open(full_path, "w") as f:
+    full = os.path.join(WORKSPACE, path)
+    os.makedirs(os.path.dirname(full), exist_ok=True)
+    with open(full, "w") as f:
         f.write(content)
-    return f"Wrote workspace/{path}"
+    return f"WROTE {path}"
 
 def read_file(path):
-    full_path = safe_path(path)
     try:
-        with open(full_path, "r") as f:
-            return f.read()
-    except Exception:
-        return f"FAILED READ: workspace/{path}"
+        return open(os.path.join(WORKSPACE, path)).read()
+    except:
+        return "READ ERROR"
 
-# ---------------- AGENT ----------------
+# ---------------- WORKERS ----------------
 
-def apply_agent(task):
-    prompt = f"""
-You are an autonomous coding agent.
+CALLS = 0
+LIMIT = 6
 
-Return ONLY valid JSON in this format:
+def llm(prompt):
+    global CALLS
+
+    if not client or CALLS >= LIMIT:
+        return '{"nodes":[]}'
+
+    CALLS += 1
+
+    res = client.models.generate_content(
+        model="models/gemini-2.0-flash",
+        contents=prompt
+    )
+    return res.text
+
+# ---------- PLANNER WORKER ----------
+
+def planner(task):
+    return llm(f"""
+You are Planner Worker.
+
+Return ONLY JSON graph:
 
 {{
-  "actions": [
+  "nodes": [
     {{
-      "type": "write",
-      "path": "file.txt",
-      "content": "hello"
-    }},
-    {{
-      "type": "shell",
-      "command": "ls"
-    }},
-    {{
-      "type": "git",
-      "command": "status"
+      "id": "n1",
+      "action": "write|read|shell",
+      "target": "",
+      "content": "",
+      "command": "",
+      "depends": []
     }}
   ]
 }}
 
-RULES:
-- Only JSON, no text
-- Only workspace file paths
-- No absolute paths
-- No outside filesystem access
-
 TASK:
 {task}
-"""
+""")
 
-    models = [
-        "models/gemini-2.5-flash",
-        "models/gemini-2.0-flash"
-    ]
+# ---------- EXECUTOR WORKER ----------
 
-    last_err = None
+async def executor_node(node, results):
+    deps = node.get("depends", [])
 
-    for model in models:
-        for _ in range(3):
-            try:
-                res = client.models.generate_content(
-                    model=model,
-                    contents=prompt
-                )
-                return res.text
-            except ServerError as e:
-                last_err = e
-                time.sleep(2)
+    while not all(d in results for d in deps):
+        await asyncio.sleep(0.05)
 
-    return f"ERROR: {last_err}"
+    a = node["action"]
 
-# ---------------- EXECUTOR ----------------
+    if a == "write":
+        out = write_file(node.get("target","file.txt"), node.get("content",""))
+    elif a == "read":
+        out = read_file(node.get("target",""))
+    elif a == "shell":
+        out = run(node.get("command",""))
+    else:
+        out = "UNKNOWN ACTION"
 
-def execute(plan):
-    import json
+    results[node["id"]] = out
+    return out
+
+async def executor(nodes):
+    results = {}
+    tasks = [executor_node(n, results) for n in nodes]
+    await asyncio.gather(*tasks)
+    return "\n".join(results.values())
+
+# ---------- CRITIC WORKER ----------
+
+def critic(output):
+    if len(output) == 0:
+        return False
+    if "ERROR" in output:
+        return False
+    return True
+
+# ---------------- AGENT CORE ----------------
+
+async def agent(task):
+    print("\nTASK:", task)
+
+    mode = route(task)
+    print("MODE:", mode)
+
+    # LOCAL FAST PATH
+    if mode == "local_ls":
+        return run(["ls"])
+
+    if mode == "local_write":
+        return write_file("hello.txt", "hello world")
+
+    if mode == "local_git_status":
+        return run(["git", "status"])
+
+    # MEMORY CHECK
+    for m in MEMORY["tasks"]:
+        if m["task"] == task:
+            print("MEMORY HIT")
+            return m["result"]
+
+    # PLANNING
+    raw = planner(task)
+    print("\nPLAN RAW:\n", raw)
 
     try:
-        start = plan.find("{")
-        end = plan.rfind("}") + 1
-        data = json.loads(plan[start:end])
+        data = json.loads(raw[raw.find("{"):raw.rfind("}")+1])
     except:
-        return "INVALID JSON PLAN"
+        return "PLAN FAIL"
 
-    results = []
+    nodes = data.get("nodes", [])
 
-    for action in data.get("actions", []):
-        t = action.get("type")
+    # EXECUTION
+    result = await executor(nodes)
 
-        if t == "write":
-            results.append(write_file(
-                action.get("path", ""),
-                action.get("content", "")
-            ))
+    # CRITIC (1 PASS ONLY)
+    if not critic(result):
+        fix = llm(f"""
+Fix this execution graph.
 
-        elif t == "read":
-            results.append(read_file(action.get("path", "")))
+TASK: {task}
+RESULT: {result}
 
-        elif t == "git":
-            results.append(git(action.get("command", "").split()))
+Return JSON only.
+""")
 
-        elif t == "shell":
-            cmd = action.get("command", "").split()
-            if cmd:
-                results.append(run(cmd).stdout)
+        try:
+            d2 = json.loads(fix[fix.find("{"):fix.rfind("}")+1])
+            result = await executor(d2.get("nodes", []))
+        except:
+            pass
 
-    return "\n".join(results)
+    MEMORY["tasks"].append({"task": task, "result": result})
+    save_memory(MEMORY)
+
+    return result
 
 # ---------------- LOOP ----------------
 
-while True:
-    user = input("\nYou: ")
+print("OpenManus V7 Multi-Worker Agent System\n")
 
-    if user in ["/exit", "exit"]:
+while True:
+    u = input("You: ")
+
+    if u in ["exit","quit","/exit"]:
         break
 
-    plan = apply_agent(user)
-
-    print("\n--- PLAN ---\n")
-    print(plan)
-
-    print("\n--- EXECUTION ---\n")
-    print(execute(plan))
+    print(asyncio.run(agent(u)))
