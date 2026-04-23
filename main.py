@@ -30,7 +30,9 @@ def run_task(user):
     result = execute(steps)
 
     memory.add(user, result)
-    print(f"✅ Result:\n{result}")
+    # Only print here if it wasn't already handled/printed by the tool
+    if not result.startswith("🚀 [CACHED]"):
+        print(f"✅ Result:\n{result}")
 
 
 if args.task:
