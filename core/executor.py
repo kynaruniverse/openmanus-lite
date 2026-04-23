@@ -26,7 +26,21 @@ def execute(plan):
             return git_tool.run(plan.get("args", ["status"]))
 
         if t == "shell":
-            return shell_tool.run(plan.get("command", "").split())
+            cmd = plan.get("command", "")
+            # Mobile Safety: Prevent destructive commands in the terminal
+            forbidden = ["rm -rf /", "mkfs", "dd if="]
+            if any(bad in cmd for bad in forbidden):
+                return "BLOCKED: Potential destructive command detected for mobile safety."
+            return shell_tool.run(cmd.split())
+
+
+        if t == "sys_clean":
+            import shutil
+            import os
+            if os.path.exists("workspace"):
+                shutil.rmtree("workspace")
+                os.makedirs("workspace")
+            return "🧹 Workspace cleared."
 
         if t == "error":
             return plan.get("msg")

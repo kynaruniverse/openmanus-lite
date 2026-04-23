@@ -28,18 +28,26 @@ def llm_plan(user):
     if not client:
         return {"type": "error", "msg": "No API key"}
 
+    import json
     prompt = f"""
-Return ONLY JSON:
+    You are a mobile-optimized agent. Return a JSON object for this task: "{user}"
+    
+    Format:
+    {{
+      "type": "write" | "read" | "shell" | "git",
+      "file": "filename (if applicable)",
+      "content": "content to write (if applicable)",
+      "command": "terminal command (if shell)",
+      "args": ["git", "args", "list"]
+    }}
+    
+    Rules:
+    1. Only return valid JSON. No markdown.
+    2. For mobile safety, avoid 'rm -rf' or system-destructive commands.
+    3. Use 'ls -p' to distinguish directories.
+    4. Shorten 'content' strings in responses to save mobile data/memory.
+    """
 
-{{
-  "type": "write|read|shell|git",
-  "file": "name",
-  "content": "text",
-  "command": "command"
-}}
-
-Task: {user}
-"""
 
     res = client.models.generate_content(
         model="models/gemini-2.0-flash",
@@ -47,11 +55,12 @@ Task: {user}
     )
 
     try:
-        start = res.text.find("{")
-        end = res.text.rfind("}") + 1
-        return eval(res.text[start:end])  # safe fallback parse
-    except:
-        return {"type": "error", "msg": "bad llm output"}
+        # Cleaner extraction and safer json.loads instead of eval
+        text = res.text.strip().removeprefix("```json").removesuffix("```").strip()
+        return json.loads(text)
+    except Exception as e:
+        return {"type": "error", "msg": f"LLM Parse Error: {str(e)}"}
+
 
 
 def plan(user):

@@ -4,9 +4,10 @@ def normalize(user: str):
     # convert natural language → structured intent hints
     return {
         "raw": user,
-        "is_file": any(x in u for x in ["file", ".txt", ".py", ".md"]),
-        "is_create": "create" in u or "make" in u,
-        "is_list": "list" in u or "ls" in u,
+        "is_file": any(x in u for x in ["file", ".txt", ".py", ".md", "read", "view"]),
+        "is_create": any(x in u for x in ["create", "make", "new", "touch"]),
+        "is_list": any(x in u for x in ["list", "ls", "show", "directory"]),
         "is_git": "git" in u,
-        "is_shell": any(x in u for x in ["run", "execute", "command"])
+        "is_shell": any(x in u for x in ["run", "exec", "cmd", "shell", "terminal"])
     }
+

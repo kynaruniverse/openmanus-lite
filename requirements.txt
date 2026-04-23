@@ -1,1 +1,3 @@
-google-genai
+google-genai  # Essential for LLM planning
+# Optional: colorama (if you want to add actual ANSI colors later)
+

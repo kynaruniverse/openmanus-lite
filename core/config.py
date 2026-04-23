@@ -3,8 +3,11 @@ import json
 
 DEFAULT = {
     "workspace": "workspace",
-    "model": "models/gemini-2.0-flash"
+    "model": "models/gemini-2.0-flash",
+    "temp": 0.1,  # Lower temperature = faster, more focused logic
+    "mobile_mode": True
 }
+
 
 CONFIG_FILE = "config.json"
 

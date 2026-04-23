@@ -22,6 +22,10 @@ def route(user: str):
     if "git" in u and "status" in u:
         return "git"
 
+    if u in ["clean", "clear workspace", "reset"]:
+        return "sys_clean"
+
+
     # ---- SAFE SHELL INTENT ----
     shell_keywords = ["run", "execute", "command"]
     if any(k in u for k in shell_keywords):
