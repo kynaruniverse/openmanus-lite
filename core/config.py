@@ -1,12 +1,15 @@
 import os
 import json
 
+import os
+
 DEFAULT = {
     "workspace": "workspace",
-    "model": "models/gemini-2.0-flash",
-    "temp": 0.1,  # Lower temperature = faster, more focused logic
+    "model": os.environ.get("OMX_MODEL", "models/gemini-2.0-flash"),
+    "temp": 0.1,
     "mobile_mode": True
 }
+
 
 
 CONFIG_FILE = "config.json"
