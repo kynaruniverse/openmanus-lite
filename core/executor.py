@@ -1,22 +1,34 @@
-from core.plugins import run as run_tool
-from tools import shell_tool, git_tool
+from tools import file_tool, shell_tool, git_tool
 
 def execute(plan):
-    results = []
 
-    for step in plan:
-        t = step.get("type")
+    if isinstance(plan, dict):
 
-        if t == "file_tool":
-            results.append(run_tool("file_tool", step))
+        t = plan.get("type")
 
-        elif t == "shell":
-            results.append(shell_tool.run(step.get("command", [])))
+        if t == "write":
+            return file_tool.run({
+                "action": "write",
+                "file": plan.get("file"),
+                "content": plan.get("content")
+            })
 
-        elif t == "git":
-            results.append(git_tool.run(step.get("args", [])))
+        if t == "read":
+            return file_tool.run({
+                "action": "read",
+                "file": plan.get("file")
+            })
 
-        elif t == "error":
-            results.append("ERROR")
+        if t == "ls":
+            return shell_tool.run(["ls"])
 
-    return "\n".join(results)
+        if t == "git":
+            return git_tool.run(plan.get("args", ["status"]))
+
+        if t == "shell":
+            return shell_tool.run(plan.get("command", "").split())
+
+        if t == "error":
+            return plan.get("msg")
+
+    return "INVALID PLAN"

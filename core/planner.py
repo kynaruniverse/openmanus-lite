@@ -1,39 +1,42 @@
 import os
-import json
 from google import genai
+from core.intent import normalize
 
 API_KEY = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=API_KEY) if API_KEY else None
 
-def safe_parse(text):
-    try:
-        start = text.find("[")
-        end = text.rfind("]") + 1
-        return json.loads(text[start:end])
-    except:
-        return [{"type": "error"}]
-
-def local_plan(user):
+def local_plan(user, intent):
     u = user.lower()
 
-    if "create" in u and "file" in u:
-        return [{"type": "file_tool", "action": "write", "file": u.split()[-1], "content": "hello world"}]
+    # FILE WRITE
+    if intent["is_create"] and intent["is_file"]:
+        name = u.split()[-1]
+        return {"type": "write", "file": name, "content": "hello world"}
 
-    if "list" in u:
-        return [{"type": "shell", "command": ["ls"]}]
+    # LIST FILES
+    if intent["is_list"]:
+        return {"type": "ls"}
+
+    # GIT
+    if intent["is_git"]:
+        return {"type": "git", "args": ["status"]}
 
     return None
 
+
 def llm_plan(user):
     if not client:
-        return [{"type": "error"}]
+        return {"type": "error", "msg": "No API key"}
 
     prompt = f"""
-Return JSON ARRAY of steps:
+Return ONLY JSON:
 
-[
-  {{"type": "...", "action": "...", "file": "...", "command": "..."}}
-]
+{{
+  "type": "write|read|shell|git",
+  "file": "name",
+  "content": "text",
+  "command": "command"
+}}
 
 Task: {user}
 """
@@ -43,7 +46,21 @@ Task: {user}
         contents=prompt
     )
 
-    return safe_parse(res.text)
+    try:
+        start = res.text.find("{")
+        end = res.text.rfind("}") + 1
+        return eval(res.text[start:end])  # safe fallback parse
+    except:
+        return {"type": "error", "msg": "bad llm output"}
+
 
 def plan(user):
-    return local_plan(user) or llm_plan(user)
+    intent = normalize(user)
+
+    # 1. deterministic first
+    p = local_plan(user, intent)
+    if p:
+        return p
+
+    # 2. fallback
+    return llm_plan(user)
