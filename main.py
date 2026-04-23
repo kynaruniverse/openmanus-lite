@@ -1,36 +1,36 @@
 import argparse
-import asyncio
+from core.router import route
+from core.planner import plan
+from core.executor import execute
+from core import memory
+from core.plugins import load
 
-from app.agent.manus import Manus
-from app.logger import logger
+load()
 
+parser = argparse.ArgumentParser(description="OpenManus-X CLI")
+parser.add_argument("--task", type=str, help="Run a single task")
+parser.add_argument("--no-cache", action="store_true")
+args = parser.parse_args()
 
-async def main():
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Run Manus agent with a prompt")
-    parser.add_argument(
-        "--prompt", type=str, required=False, help="Input prompt for the agent"
-    )
-    args = parser.parse_args()
-
-    # Create and initialize Manus agent
-    agent = await Manus.create()
-    try:
-        # Use command line prompt if provided, otherwise ask for input
-        prompt = args.prompt if args.prompt else input("Enter your prompt: ")
-        if not prompt.strip():
-            logger.warning("Empty prompt provided.")
+def run_task(user):
+    if not args.no_cache:
+        cached = memory.find(user)
+        if cached:
+            print("[CACHED]\n", cached)
             return
 
-        logger.warning("Processing your request...")
-        await agent.run(prompt)
-        logger.info("Request processing completed.")
-    except KeyboardInterrupt:
-        logger.warning("Operation interrupted.")
-    finally:
-        # Ensure agent resources are cleaned up before exiting
-        await agent.cleanup()
+    steps = plan(user)
+    result = execute(steps)
 
+    memory.add(user, result)
+    print(result)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+if args.task:
+    run_task(args.task)
+else:
+    print("OpenManus-X CLI\n")
+    while True:
+        user = input("You: ")
+        if user in ["exit", "quit"]:
+            break
+        run_task(user)
