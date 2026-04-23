@@ -1,29 +1,4 @@
-### Project-specific ###
-logs/
-data/
-workspace/
-
-### Secrets ###
-.env
-config/*.txt
-
-### Python ###
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-
-build/
-dist/
-*.egg-info/
-
 venv/
-.venv/
-env/
-ENV/
-
-.pytest_cache/
-.mypy_cache/
-
-.DS_Store
-node_modules
+__pycache__/
+workspace/
+memory.json
