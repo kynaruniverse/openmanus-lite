@@ -1,8 +1,6 @@
 import os
 import json
 
-import os
-
 DEFAULT = {
     "workspace": "workspace",
     "model": os.environ.get("OMX_MODEL", "models/gemini-2.0-flash"),

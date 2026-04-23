@@ -65,8 +65,7 @@ def llm_plan(user):
         return {"type": "error", "msg": f"API Error: {str(e)}"}
     except Exception as e:
         return {"type": "error", "msg": f"Unexpected Error: {str(e)}"}
-    except Exception as e:
-        return {"type": "error", "msg": f"LLM Parse Error: {str(e)}"}
+
 
 
 

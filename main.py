@@ -35,9 +35,7 @@ def run_task(user):
         print(f"✅ Result:\n{result}")
 
 
-if args.task:
-    run_task(args.task)
-else:
+def main_interactive():
     print("OpenManus-X CLI\n")
     print("Quick Actions: [1] ls  [2] git status  [3] help")
     while True:
@@ -54,12 +52,12 @@ else:
             
         run_task(user)
 
-
 def run_from_cli():
     # Helper to allow the 'omx' command to work after 'pip install -e .'
     if args.task:
         run_task(args.task)
     else:
-        # Launch interactive mode
-        import sys
-        main_interactive() # Wrap your while loop in this function name
+        main_interactive()
+
+if __name__ == "__main__":
+    run_from_cli()
