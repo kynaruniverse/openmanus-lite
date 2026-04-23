@@ -1,16 +1,21 @@
 import os
 import subprocess
+import time
 from google import genai
+from google.genai.errors import ServerError
 
 API_KEY = os.environ.get("GEMINI_API_KEY")
 if not API_KEY:
-    raise ValueError("GEMINI_API_KEY not set in environment")
+    raise ValueError("GEMINI_API_KEY not set")
 
 client = genai.Client(api_key=API_KEY)
 
 REPO_PATH = os.getcwd()
+WORKSPACE = os.path.join(REPO_PATH, "workspace")
 
-print("OpenManus Autonomous Agent (LEVEL 3)")
+os.makedirs(WORKSPACE, exist_ok=True)
+
+print("OpenManus Autonomous Agent (PHASE 3)")
 print(f"Repo: {REPO_PATH}\n")
 
 def run(cmd):
@@ -20,38 +25,121 @@ def git(cmd):
     result = run(["git"] + cmd)
     return result.stdout + result.stderr
 
+# ---------------- SAFE FILE SYSTEM ----------------
+
+def safe_path(path):
+    # force everything into workspace
+    return os.path.join(WORKSPACE, path.lstrip("/"))
+
 def write_file(path, content):
-    full_path = os.path.join(REPO_PATH, path)
+    full_path = safe_path(path)
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
     with open(full_path, "w") as f:
         f.write(content)
-    return f"Wrote {path}"
+    return f"Wrote workspace/{path}"
 
 def read_file(path):
-    full_path = os.path.join(REPO_PATH, path)
-    with open(full_path, "r") as f:
-        return f.read()
+    full_path = safe_path(path)
+    try:
+        with open(full_path, "r") as f:
+            return f.read()
+    except Exception:
+        return f"FAILED READ: workspace/{path}"
+
+# ---------------- AGENT ----------------
 
 def apply_agent(task):
     prompt = f"""
-You are an autonomous dev agent.
+You are an autonomous coding agent.
 
-You can output actions in this format ONLY:
+Return ONLY valid JSON in this format:
 
-COMMAND: git <args>
-COMMAND: write <file>|<content>
-COMMAND: read <file>
-COMMAND: shell <command>
+{{
+  "actions": [
+    {{
+      "type": "write",
+      "path": "file.txt",
+      "content": "hello"
+    }},
+    {{
+      "type": "shell",
+      "command": "ls"
+    }},
+    {{
+      "type": "git",
+      "command": "status"
+    }}
+  ]
+}}
 
-Task:
+RULES:
+- Only JSON, no text
+- Only workspace file paths
+- No absolute paths
+- No outside filesystem access
+
+TASK:
 {task}
 """
 
-    response = client.models.generate_content(
-        model="models/gemini-2.5-flash",
-        contents=prompt
-    )
+    models = [
+        "models/gemini-2.5-flash",
+        "models/gemini-2.0-flash"
+    ]
 
-    return response.text
+    last_err = None
+
+    for model in models:
+        for _ in range(3):
+            try:
+                res = client.models.generate_content(
+                    model=model,
+                    contents=prompt
+                )
+                return res.text
+            except ServerError as e:
+                last_err = e
+                time.sleep(2)
+
+    return f"ERROR: {last_err}"
+
+# ---------------- EXECUTOR ----------------
+
+def execute(plan):
+    import json
+
+    try:
+        start = plan.find("{")
+        end = plan.rfind("}") + 1
+        data = json.loads(plan[start:end])
+    except:
+        return "INVALID JSON PLAN"
+
+    results = []
+
+    for action in data.get("actions", []):
+        t = action.get("type")
+
+        if t == "write":
+            results.append(write_file(
+                action.get("path", ""),
+                action.get("content", "")
+            ))
+
+        elif t == "read":
+            results.append(read_file(action.get("path", "")))
+
+        elif t == "git":
+            results.append(git(action.get("command", "").split()))
+
+        elif t == "shell":
+            cmd = action.get("command", "").split()
+            if cmd:
+                results.append(run(cmd).stdout)
+
+    return "\n".join(results)
+
+# ---------------- LOOP ----------------
 
 while True:
     user = input("\nYou: ")
@@ -59,39 +147,10 @@ while True:
     if user in ["/exit", "exit"]:
         break
 
-    result = apply_agent(user)
+    plan = apply_agent(user)
 
-    result = result.replace("```", "")
+    print("\n--- PLAN ---\n")
+    print(plan)
 
-    print("\n--- Agent Plan ---\n")
-    print(result)
-
-    print("\n--- Execution ---\n")
-
-    ALLOWED = ["ls", "cat", "git", "python3", "echo", "pwd"]
-
-    for line in result.splitlines():
-        if line.startswith("COMMAND: git"):
-            cmd = line.replace("COMMAND: git", "").strip().split()
-            print(git(cmd))
-
-        elif line.startswith("COMMAND: write"):
-            _, rest = line.split("COMMAND: write", 1)
-            file_path, content = rest.split("|", 1)
-            print(write_file(file_path.strip(), content))
-
-        elif line.startswith("COMMAND: read"):
-            file_path = line.replace("COMMAND: read", "").strip()
-            print(read_file(file_path))
-
-        elif line.startswith("COMMAND: shell"):
-            cmd = line.replace("COMMAND: shell", "").strip().split()
-
-            if not cmd:
-                continue
-
-            if cmd[0] not in ALLOWED:
-                print("Blocked unsafe command:", cmd[0])
-                continue
-
-            print(run(cmd).stdout)
+    print("\n--- EXECUTION ---\n")
+    print(execute(plan))
