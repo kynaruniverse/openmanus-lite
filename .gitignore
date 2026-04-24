@@ -2,3 +2,10 @@ venv/
 __pycache__/
 workspace/
 memory.json
+config.json
+*.egg-info/
+dist/
+build/
+__pycache__/
+.env
+

@@ -1,27 +1,30 @@
 import os
 
-WORKSPACE = "workspace"
+WORKSPACE = os.path.abspath("workspace")
 
 def run(args):
-    cmd = args.get("action")
+    action = args.get("action") or args.get("type")
+    filename = args.get("file", "").strip()
+    
+    if not filename:
+        return "❌ Error: No filename provided."
 
-    if cmd == "write":
-        path = os.path.join(WORKSPACE, args.get("file",""))
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            f.write(args.get("content",""))
-        return f"WROTE {path}"
+    # Security: Prevent Directory Traversal
+    target_path = os.path.abspath(os.path.join(WORKSPACE, filename))
+    if not target_path.startswith(WORKSPACE):
+        return "🛡️ Security Block: Access outside workspace denied."
 
-    if cmd == "read":
-        file_name = args.get("file","")
-        path = os.path.join(WORKSPACE, file_name)
+    if action == "write":
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        with open(target_path, "w", encoding="utf-8") as f:
+            f.write(args.get("content", ""))
+        return f"WROTE {filename}"
+
+    if action == "read":
         try:
-            if not os.path.exists(path):
-                # Mobile UX: If file isn't in workspace, check root as fallback
-                if os.path.exists(file_name):
-                    return open(file_name).read()
-                return f"🔍 Error: File '{file_name}' not found."
-            with open(path, "r", encoding="utf-8") as f:
+            if not os.path.exists(target_path):
+                return f"🔍 Error: File '{filename}' not found in workspace."
+            with open(target_path, "r", encoding="utf-8") as f:
                 return f.read()
         except Exception as e:
             return f"❌ Read Error: {str(e)}"

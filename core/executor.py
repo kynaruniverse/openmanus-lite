@@ -1,48 +1,37 @@
-from tools import file_tool, shell_tool, git_tool
+import shlex
+from core import plugins
 
 def execute(plan):
+    if not isinstance(plan, dict):
+        return "INVALID PLAN"
 
-    if isinstance(plan, dict):
+    t = plan.get("type")
+    
+    # 1. System Internal Actions
+    if t == "sys_clean":
+        import shutil
+        import os
+        if os.path.exists("workspace"):
+            shutil.rmtree("workspace")
+            os.makedirs("workspace")
+        return "🧹 Workspace cleared."
 
-        t = plan.get("type")
+    if t == "error":
+        return plan.get("msg")
 
-        if t == "write":
-            return file_tool.run({
-                "action": "write",
-                "file": plan.get("file"),
-                "content": plan.get("content")
-            })
+    # 2. Plugin-Based Actions
+    # Map intent types to tool filenames
+    tool_map = {
+        "write": "file_tool",
+        "read": "file_tool",
+        "ls": "shell_tool",
+        "shell": "shell_tool",
+        "git": "git_tool"
+    }
 
-        if t == "read":
-            return file_tool.run({
-                "action": "read",
-                "file": plan.get("file")
-            })
+    tool_name = tool_map.get(t)
+    if tool_name in plugins.TOOLS:
+        # Pass the whole plan to the tool
+        return plugins.TOOLS[tool_name](plan)
 
-        if t == "ls":
-            return shell_tool.run(["ls"])
-
-        if t == "git":
-            return git_tool.run(plan.get("args", ["status"]))
-
-        if t == "shell":
-            cmd = plan.get("command", "")
-            # Mobile Safety: Prevent destructive commands in the terminal
-            forbidden = ["rm -rf /", "mkfs", "dd if="]
-            if any(bad in cmd for bad in forbidden):
-                return "BLOCKED: Potential destructive command detected for mobile safety."
-            return shell_tool.run(cmd.split())
-
-
-        if t == "sys_clean":
-            import shutil
-            import os
-            if os.path.exists("workspace"):
-                shutil.rmtree("workspace")
-                os.makedirs("workspace")
-            return "🧹 Workspace cleared."
-
-        if t == "error":
-            return plan.get("msg")
-
-    return "INVALID PLAN"
+    return f"UNKNOWN ACTION: {t}"
