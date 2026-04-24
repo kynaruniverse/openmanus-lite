@@ -59,8 +59,16 @@ class LLMClient:
     def _explain_client_error(exc: genai_errors.ClientError) -> str:
         code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
         message = str(exc)
-        if code == 401 or "API key" in message and "invalid" in message.lower():
-            return "Gemini rejected the API key (401). Check GEMINI_API_KEY."
+        lowered = message.lower()
+        if (
+            code in (400, 401)
+            and ("api_key_invalid" in lowered or "api key" in lowered)
+        ):
+            return (
+                "Gemini rejected the API key (the key is invalid or expired). "
+                "Generate a fresh key at https://aistudio.google.com/ and update "
+                "the GEMINI_API_KEY secret."
+            )
         if code == 403:
             if "leaked" in message.lower():
                 return (
