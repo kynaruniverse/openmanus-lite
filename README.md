@@ -1,81 +1,42 @@
-# 📱 OpenManus-X (Mobile-First Edition)
+# 🌟 OpenManus-Lite: Universal AI Developer Agent
 
-**OpenManus-X** is a high-performance, local-first autonomous agent framework. It is specifically engineered to be lean, fast, and safe for mobile terminals (like Termux and iSH) while remaining fully capable on desktop environments.
+A mobile-first, context-aware AI agent built to help you build, edit, and manage repositories of any size—directly from your phone (Termux/Spck) or PC.
 
-Unlike traditional agents that burn cloud tokens for every thought, OpenManus-X uses **Intelligent Local Routing** to handle common tasks on-device, only calling the cloud when complex reasoning is required.
+## 🚀 Versatile Usage Modes
 
----
+### 1. The "Specialist" Mode (Best for existing huge repos)
+Drop the agent into any folder (like a Pokémon Decompilation) without moving files.
+1. `cd /path/to/your/massive-repo`
+2. `omx --task "refactor the damage calculation in battle.c" --path .`
+*The agent treats your current folder as its workspace.*
 
-## 🔥 Why OpenManus-X?
+### 2. The "Sandbox" Mode (Safe testing)
+Build new things in an isolated environment.
+1. `omx --task "create a snake game in python"`
+*Files will be created safely in the `OpenManus/workspace` folder.*
 
-- 🧠 **Local-First Intelligence**: Tasks like file management, directory listing, and git operations are handled by a deterministic local router. This saves battery, data, and API costs.
-- 🛡️ **Hardened Safety**: Built-in guardrails block destructive commands (e.g., `rm -rf /`) at the executor level, ensuring your device remains safe.
-- ♻️ **Persistent Instant Memory**: Features a local JSON-based cache. If you repeat a task, the agent retrieves the result instantly without re-processing.
-- ☕ **Quota Resilience**: Optimized for the Gemini Free Tier. It gracefully handles rate limits (429 errors) with user-friendly notifications instead of crashing.
-- ⚡ **Mobile Optimized UX**:
-    - **Shortcuts**: Use numeric keys (`1`, `2`, `3`) for common actions.
-    - **Visual Feedback**: Emoji status indicators (🧠, ⚡, ✅) make progress tracking easy on small screens.
+### 3. The "Bake-In" Mode
+Add the agent as a tool inside your own project's repo.
+1. `git submodule add https://github.com/kynaruniverse/openmanus-lite .agent`
 
----
+## 🛠️ Installation
+1. `git clone https://github.com/kynaruniverse/openmanus-lite`
+2. `cd openmanus-lite`
+3. `pip install -e .`
+4. `cp config.json.example config.json` (Add your Gemini API Key)
 
-## 🚀 Installation
+## 🕹️ CLI Commands
+- `omx`: Start interactive mobile shell.
+- `omx --task "..."`: Run a single prompt.
+- `omx --path "/path/to/project"`: Set a specific working directory.
 
-### 1. Setup Environment
-```bash
-# Clone the repository
-git clone https://github.com/kynaruniverse/openmanus-lite.git
-cd openmanus-lite
+## 🛡️ Security
+The agent is restricted to the path you provide. It cannot access files outside of the `--path` or the default `workspace` folder.
 
-# Install requirements
-pip install -r requirements.txt
-```
+## 🔑 Setting up your API Key
+1. Get a free Gemini API key from [Google AI Studio](https://aistudio.google.com/).
+2. Open the `.env` file in the project folder.
+3. Paste your key: `GEMINI_API_KEY=your_actual_key_here`
+4. Save and run!
 
-### 2. Enable CLI Shortcut
-To use the omx command from anywhere in your terminal:
-```bash
-pip install -e .
-export PYTHONPATH=$PYTHONPATH:.
-```
-
-## 🔑 Configuration
-OpenManus-X is model-agnostic. You can customize the "brain" via environment variables:
-```bash
-# Required for advanced tasks
-export GEMINI_API_KEY="your_google_ai_key"
-
-# Optional: Override the default model
-export OMX_MODEL="models/gemini-2.0-flash"
-```
-
-## 🕹️ Usage
-### Interactive Mode
-The best way to use the agent on mobile. Just type:
-```bash
-omx
-```
-*Quick Actions inside the shell:*
- - Type 1 for list files
- - Type 2 for git status
- - Type 3 for help
-### Single Task Mode
-Execute a command directly and exit:
-```bash
-omx --task "create a python script that calculates fibonacci"
-omx --task "list files"
-```
-### Workspace Cleanup
-Reset your agent's temporary workspace and clear the local cache:
-```bash
-omx --task "clean"
-```
-
-## 🧩 Plugin System
-Expanding OpenManus-X is simple. Drop any Python script into the tools/ directory. As long as it contains a run(args) function, the agent will automatically detect and integrate it into its capabilities.
-```python
-# tools/hello_tool.py
-def run(args):
-    return "Hello from your custom tool!"
-```
-
-## 📜 License
-This project is licensed under the MIT License - see the LICENSE file for details.
+*Note: You can also set it globally in your terminal using `export GEMINI_API_KEY=your_key`.*

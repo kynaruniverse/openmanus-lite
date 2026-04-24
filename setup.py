@@ -9,8 +9,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "omx=main:run_from_cli" # Updated to point to a standard entry function
-        ]
-    }
-
+            "omx=core.main:run_from_cli",
+        ],
+    },
 )
