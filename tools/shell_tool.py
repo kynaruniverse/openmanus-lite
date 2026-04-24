@@ -1,25 +1,53 @@
-import subprocess
-import shlex
+"""Run shell commands inside the active target directory."""
+from __future__ import annotations
 
-def run(plan):
-    # Determine command based on type
-    if plan.get("type") == "ls":
-        cmd_str = "ls -p"
+import os
+import shlex
+import subprocess
+
+FORBIDDEN = ("rm -rf /", "mkfs", "dd if=", ":(){:|:&};:", "> /dev/sda")
+TIMEOUT_SECONDS = 30
+MAX_OUTPUT = 8000
+
+
+def run(plan: dict) -> str:
+    action = (plan.get("action") or plan.get("type") or "").lower()
+    if action == "ls" and not plan.get("command"):
+        cmd_str = "ls -la"
     else:
-        cmd_str = plan.get("command", "")
+        cmd_str = (plan.get("command") or "").strip()
 
     if not cmd_str:
-        return "❌ No command provided."
+        return "❌ shell tool: no command provided."
 
-    # Mobile Safety Guardrail
-    forbidden = ["rm -rf /", "mkfs", "dd if="]
-    if any(bad in cmd_str for bad in forbidden):
-        return "BLOCKED: Potential destructive command detected."
+    if any(bad in cmd_str for bad in FORBIDDEN):
+        return f"BLOCKED: refusing to run destructive command: {cmd_str}"
 
     try:
-        # Use shlex for safe argument splitting
         args = shlex.split(cmd_str)
-        result = subprocess.run(args, capture_output=True, text=True, timeout=30)
-        return (result.stdout + result.stderr).strip()
-    except Exception as e:
-        return f"❌ Shell Error: {str(e)}"
+    except ValueError as exc:
+        return f"❌ shell tool: could not parse command ({exc})."
+
+    cwd = os.environ.get("OMX_TARGET_PATH") or os.getcwd()
+    try:
+        completed = subprocess.run(
+            args,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT_SECONDS,
+        )
+    except FileNotFoundError:
+        return f"❌ shell tool: command not found: {args[0]}"
+    except subprocess.TimeoutExpired:
+        return f"⏳ shell tool: command timed out after {TIMEOUT_SECONDS}s."
+    except Exception as exc:
+        return f"❌ shell tool error: {exc}"
+
+    output = (completed.stdout + completed.stderr).strip()
+    if len(output) > MAX_OUTPUT:
+        output = output[:MAX_OUTPUT] + f"\n…[truncated, {len(output) - MAX_OUTPUT} bytes more]"
+
+    if completed.returncode != 0:
+        return f"❌ exit {completed.returncode}: {output}"
+    return output or "(no output)"

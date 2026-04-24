@@ -1,7 +1,19 @@
+# Environments / secrets
+.env
+.env.local
 venv/
+.venv/
+
+# Python build / cache
 __pycache__/
 *.pyc
-.env
-memory.json
-workspace/
+*.pyo
+*.egg-info/
+build/
+dist/
 .pytest_cache/
+
+# OpenManus runtime artifacts
+memory.json
+omx.log
+workspace/
