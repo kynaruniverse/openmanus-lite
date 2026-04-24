@@ -39,7 +39,7 @@ class Config:
                 "  Get a key at https://aistudio.google.com/."
             )
 
-        model = os.environ.get("OMX_MODEL", "models/gemini-2.0-flash").strip()
+        model = os.environ.get("OMX_MODEL", "models/gemini-2.5-flash-lite").strip()
         log_level = os.environ.get("OMX_LOG_LEVEL", "INFO").strip().upper()
         log_file = os.environ.get("OMX_LOG_FILE", "omx.log").strip()
         workspace_dir = os.environ.get("OMX_WORKSPACE", "workspace").strip()
