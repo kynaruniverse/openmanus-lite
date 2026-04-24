@@ -1,0 +1,6 @@
+{
+  "api_key": "YOUR_GEMINI_API_KEY_HERE",
+  "model": "gemini-2.0-flash",
+  "workspace_dir": "workspace",
+  "max_steps": 10
+}
