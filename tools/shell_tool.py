@@ -5,9 +5,14 @@ import os
 import shlex
 import subprocess
 
-FORBIDDEN = ("rm -rf /", "mkfs", "dd if=", ":(){:|:&};:", "> /dev/sda")
+FORBIDDEN = (
+    "rm -rf /", "rm -rf /*", "mkfs", "dd if=", ":(){:|:&};:",
+    "> /dev/sda", "> /dev/nvme", "shutdown", "reboot",
+    "chmod -R 000", "chown -R root",
+)
 TIMEOUT_SECONDS = 30
 MAX_OUTPUT = 8000
+SHELL_METACHARS = ("|", ">", "<", "&&", "||", ";", "$(", "`", "*", "?")
 
 
 def run(plan: dict) -> str:
@@ -23,22 +28,33 @@ def run(plan: dict) -> str:
     if any(bad in cmd_str for bad in FORBIDDEN):
         return f"BLOCKED: refusing to run destructive command: {cmd_str}"
 
-    try:
-        args = shlex.split(cmd_str)
-    except ValueError as exc:
-        return f"❌ shell tool: could not parse command ({exc})."
-
     cwd = os.environ.get("OMX_TARGET_PATH") or os.getcwd()
+    use_shell = any(meta in cmd_str for meta in SHELL_METACHARS)
+
     try:
-        completed = subprocess.run(
-            args,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=TIMEOUT_SECONDS,
-        )
-    except FileNotFoundError:
-        return f"❌ shell tool: command not found: {args[0]}"
+        if use_shell:
+            # Pipes / redirects / globs etc. — run through bash -c.
+            completed = subprocess.run(
+                ["bash", "-c", cmd_str],
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_SECONDS,
+            )
+        else:
+            try:
+                args = shlex.split(cmd_str)
+            except ValueError as exc:
+                return f"❌ shell tool: could not parse command ({exc})."
+            completed = subprocess.run(
+                args,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=TIMEOUT_SECONDS,
+            )
+    except FileNotFoundError as exc:
+        return f"❌ shell tool: command not found ({exc})."
     except subprocess.TimeoutExpired:
         return f"⏳ shell tool: command timed out after {TIMEOUT_SECONDS}s."
     except Exception as exc:

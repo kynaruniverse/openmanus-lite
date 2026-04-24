@@ -27,6 +27,7 @@ class Config:
     log_level: str
     log_file: str
     workspace_dir: str
+    cache_ttl: int  # seconds; 0 = no expiry
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -43,11 +44,8 @@ class Config:
         log_level = os.environ.get("OMX_LOG_LEVEL", "INFO").strip().upper()
         log_file = os.environ.get("OMX_LOG_FILE", "omx.log").strip()
         workspace_dir = os.environ.get("OMX_WORKSPACE", "workspace").strip()
-
-        try:
-            max_steps = int(os.environ.get("OMX_MAX_STEPS", "10"))
-        except ValueError:
-            max_steps = 10
+        max_steps = _int_env("OMX_MAX_STEPS", 10)
+        cache_ttl = _int_env("OMX_CACHE_TTL", 0)
 
         return cls(
             api_key=api_key,
@@ -56,4 +54,15 @@ class Config:
             log_level=log_level,
             log_file=log_file,
             workspace_dir=workspace_dir,
+            cache_ttl=cache_ttl,
         )
+
+
+def _int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
