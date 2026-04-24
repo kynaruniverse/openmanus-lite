@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b0d12" />
+  <title>OpenManus-Lite</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🌟</span>
+      <h1>OpenManus<span class="muted">-Lite</span></h1>
+    </div>
+    <div class="status" id="status">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">Ready</span>
+    </div>
+    <button id="settings-btn" class="icon-btn" title="Settings">⚙</button>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar" id="sidebar">
+      <h2>Settings</h2>
+      <label>Provider
+        <select id="provider"></select>
+      </label>
+      <label>Model
+        <input type="text" id="model" placeholder="(provider default)" />
+      </label>
+      <label>Mode
+        <select id="mode">
+          <option value="react" selected>ReAct (recommended)</option>
+          <option value="one-shot">One-shot</option>
+        </select>
+      </label>
+      <label>Budget (max LLM calls, 0 = unlimited)
+        <input type="number" id="budget" min="0" value="0" />
+      </label>
+      <label>Target path (optional)
+        <input type="text" id="path" placeholder="./workspace" />
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" id="use-cache" checked /> Use cache
+      </label>
+
+      <div class="provider-help" id="provider-help"></div>
+    </aside>
+
+    <section class="chat">
+      <div class="messages" id="messages">
+        <div class="empty">
+          <h2>What should I do?</h2>
+          <p>Try one of these to get started:</p>
+          <div class="suggestions">
+            <button class="chip">Summarise this repo</button>
+            <button class="chip">List files in current directory</button>
+            <button class="chip">What year was Python first released?</button>
+            <button class="chip">Compute the 12th fibonacci using python</button>
+          </div>
+        </div>
+      </div>
+
+      <form class="composer" id="composer">
+        <textarea
+          id="task" rows="2" placeholder="Type a task… (Enter to send · Shift+Enter for newline)"
+          autofocus></textarea>
+        <button type="submit" id="send" class="primary">Send</button>
+        <button type="button" id="stop" class="ghost" hidden>Stop</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

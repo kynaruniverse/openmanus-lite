@@ -1,118 +1,134 @@
 # OpenManus-Lite
 
-A terminal-based AI developer agent powered by Google Gemini. Pure Python CLI —
-no web server, no frontend.
+A multi-provider AI developer agent with both a CLI and a web UI. Plain Python
+on the inside, optional standalone-binary distribution via PyInstaller.
 
 ## Project type
 
 - Language: Python 3.12
 - Entry points:
-  - `python main.py …`
-  - `omx …` (installed by `pip install -e .` via `setup.py`)
+  - `python main.py …`  (CLI)
+  - `python main.py --web` or `python -m web.server` (web UI on port 5000)
+  - `omx` and `omx-web` (after `pip install -e .`)
 
 ## Layout
 
 ```
 core/
-  cli.py            argparse + interactive shell
-  agent.py          orchestrator: chooses react / one-shot, manages cache + budget
-  llm.py            Gemini client wrapper (streaming, retries, hard call budget)
-  react.py          ReAct loop: think → act → observe → repeat
-  planner.py        legacy one-shot prompt + JSON plan parser (still used in --mode one-shot)
-  executor.py       dispatches a single Step or full Plan to the tool registry
-  memory.py         normalised cache with optional TTL, opt-out flag
-  plugins.py        loads tools/*_tool.py at startup
-  config.py         env-driven config (fails fast on missing key)
-  logging_setup.py  shared "omx" logger (console + rotating file)
-  main.py           thin shim exporting cli.run_from_cli for back-compat
+  cli.py            argparse + interactive shell + --web flag
+  agent.py          orchestrator; emits per-step events for streaming UIs
+  llm.py            Provider-agnostic LLM client (budget, streaming, errors)
+  react.py          ReAct loop (think → act → observe) with on_event callback
+  planner.py        Legacy one-shot prompt + JSON plan parser
+  executor.py       Single-step or full-plan dispatch to tools
+  memory.py         Normalised cache with optional TTL
+  plugins.py        Loads tools/*_tool.py
+  config.py         Multi-provider env-driven config
+  logging_setup.py  Shared "omx" logger
+  providers/        Pluggable LLM backends
+    base.py            BaseProvider interface
+    gemini.py          Google Gemini
+    openai_provider.py OpenAI (also reused by openrouter)
+    anthropic_provider.py Anthropic Claude
+    ollama.py          Local LLMs via Ollama (no API key)
+    openrouter.py      OpenRouter (one key → 100+ models)
 tools/
-  file_tool.py      sandboxed read / write inside the target directory
-  shell_tool.py     shell exec with destructive-command blocklist; pipes/redirects via bash -c
-  git_tool.py       arbitrary git subcommands (status, log, diff, …)
-  python_tool.py    sandboxed `python -c` snippet evaluation (10s timeout)
-  search_tool.py    DuckDuckGo web search (no API key required)
+  shell_tool.py     Shell exec; pipes/redirects via bash -c; destructive blocked
+  file_tool.py      Sandboxed read/write
+  git_tool.py       Arbitrary git subcommands
+  python_tool.py    Sandboxed `python -c` snippet evaluation
+  search_tool.py    DuckDuckGo web search
+web/
+  server.py         FastAPI server, SSE streaming of agent events
+  static/
+    index.html      Single-page chat UI
+    style.css       Modern dark theme, responsive (works on phone)
+    app.js          Vanilla JS — fetch + SSE parsing, no build step
+    favicon.svg
 tests/
-  test_basic.py        offline unit tests for planner + tools
-  test_integration.py  end-to-end ReAct tests with a stub LLM (no network)
-main.py             top-level launcher
+  test_basic.py        Offline unit tests for planner + tools
+  test_integration.py  End-to-end ReAct tests with a stub LLM
+build_binary.py     PyInstaller config — ships a single-file binary
+main.py             Top-level launcher
 ```
 
 ## Required configuration
 
-- `GEMINI_API_KEY` — set as a Replit Secret (preferred) or in a local `.env`.
+Pick a provider and supply the matching key:
 
-The committed `.env` (which contained a leaked key) was deleted; `.env.example`
-documents the schema. If `GEMINI_API_KEY` is missing the program exits with a
-clear error (exit code 2).
+| Provider     | Env var              | Where to get the key                       |
+|--------------|----------------------|--------------------------------------------|
+| `gemini` (default) | `GEMINI_API_KEY` | https://aistudio.google.com/             |
+| `openai`     | `OPENAI_API_KEY`     | https://platform.openai.com/             |
+| `anthropic`  | `ANTHROPIC_API_KEY`  | https://console.anthropic.com/           |
+| `openrouter` | `OPENROUTER_API_KEY` | https://openrouter.ai/keys (100+ models) |
+| `ollama`     | *(none)*             | https://ollama.com (runs locally, free)  |
+
+Switch providers via `--provider openai` or `OMX_PROVIDER=ollama`.
 
 ### Optional environment variables
 
-| name              | default                     | meaning                              |
-|-------------------|-----------------------------|--------------------------------------|
-| `OMX_MODEL`       | `models/gemini-2.5-flash-lite` | Gemini model id                   |
-| `OMX_LOG_LEVEL`   | `INFO`                      | DEBUG / INFO / WARNING / ERROR       |
-| `OMX_LOG_FILE`    | `omx.log`                   | log destination                      |
-| `OMX_BUDGET`      | `0` (unlimited)             | hard cap on LLM calls per task       |
-| `OMX_CACHE_TTL`   | `0` (no expiry)             | cache entry lifetime in seconds      |
-| `OMX_MAX_STEPS`   | `10`                        | max iterations per task              |
-| `OMX_WORKSPACE`   | `workspace`                 | default working directory            |
+| name              | default                         | meaning                              |
+|-------------------|---------------------------------|--------------------------------------|
+| `OMX_PROVIDER`    | `gemini`                        | LLM backend                          |
+| `OMX_MODEL`       | (per-provider)                  | Override the model id                |
+| `OMX_BASE_URL`    | (none)                          | For ollama / OpenAI-compatible APIs  |
+| `OMX_BUDGET`      | `0` (unlimited)                 | Hard cap on LLM calls per task       |
+| `OMX_CACHE_TTL`   | `0` (no expiry)                 | Cache entry lifetime in seconds      |
+| `OMX_MAX_STEPS`   | `10`                            | Max iterations per task              |
+| `OMX_WORKSPACE`   | `workspace`                     | Default sandbox directory            |
+| `OMX_LOG_LEVEL`   | `INFO`                          | DEBUG/INFO/WARNING/ERROR             |
+| `OMX_LOG_FILE`    | `omx.log`                       | Structured log destination           |
+
+## Workflows
+
+- **Web UI** (default) — runs `python main.py --web --host 0.0.0.0 --port 5000`,
+  serves the FastAPI app + static front-end. Output type: webview.
+- **OpenManus CLI** — runs `python main.py --help` for sanity-checking the CLI
+  is wired correctly.
 
 ## CLI flags
 
 ```
---task "…"            run one task and exit (otherwise interactive)
---path PATH           target project directory (defaults to OMX_WORKSPACE)
---mode {react,one-shot}   loop mode (default: react)
---budget N            hard cap on LLM calls per task
---cache {on,off}      disable cache reads + writes entirely
---no-cache            ignore cache for this run only
---no-synthesis        skip the second LLM call in one-shot mode
---debug               verbose logging
-```
-
-## Workflow
-
-A console workflow named **OpenManus CLI** runs `python main.py --help` to
-verify the CLI is wired correctly without burning API quota on every restart.
-Real tasks should be run from the shell, e.g.:
-
-```bash
-python main.py --task "count the python files in this repo" --path .
-python main.py --task "what year was python released?"           # uses search
-python main.py --mode one-shot --task "show git status"
-python main.py                                                   # interactive
+python main.py [--task "..."] [--path PATH] [--provider PROV] [--model MODEL]
+               [--mode {react,one-shot}] [--budget N]
+               [--cache {on,off}] [--no-cache] [--no-synthesis]
+               [--web] [--host H] [--port P] [--debug]
 ```
 
 ## Validation
 
 End-to-end runs verified against the live Gemini API:
 
-- ReAct + python tool — computed `fib(12)=144` in 3 LLM calls.
-- ReAct + search tool — answered "Python first released in 1991" via DuckDuckGo.
+- ReAct + python tool — computed `fib(12)=144`.
+- ReAct + search tool — answered "Python released in 1991" via DuckDuckGo.
 - ReAct + shell with pipes — `git ls-files | grep \.py$ | wc -l` works via bash.
-- Budget enforcement — `--budget 2` halts the agent at exactly 2 calls.
-- One-shot mode — legacy planner + synthesis still produces real prose.
+- Budget enforcement — `--budget N` halts at exactly N calls.
+- Web UI streams events correctly; SSE protocol verified end-to-end via curl.
+- `/api/info` correctly reports provider readiness based on environment.
+- 14 unit + integration tests pass (no network).
 
-`pytest -v` runs **14 tests** (8 offline unit + 6 integration tests that drive
-the full ReAct loop with a stub LLM).
+## Standalone binary
 
-## Production-ready improvements (this round)
+```bash
+pip install -e ".[dev]"     # includes pyinstaller
+python build_binary.py
+./dist/omx --task "list files" --path .
+./dist/omx --web --port 5000
+```
 
-1. **Reactive ReAct loop** is now the default — plans one step at a time,
-   feeds tool observations back into the next prompt, recovers from bad JSON.
-2. **Cache** keys are normalised (lowercased, punctuation-stripped) and
-   support a TTL. `--cache off` disables it entirely.
-3. **Streaming** is exposed via `LLMClient.stream()` and used by debug logs;
-   the same call-counting and budget apply to streamed and non-streamed calls.
-4. **Cost guardrail**: `--budget N` (or `OMX_BUDGET`) enforces a hard cap on
-   LLM calls per task. `--no-synthesis` skips the second pass in one-shot mode.
-5. **New tools**: `python` (sandboxed snippet eval) and `search` (DuckDuckGo).
-   `git diff` works through the existing git tool.
-6. **Integration tests** exercise the ReAct loop end-to-end with a stub LLM,
-   including JSON-recovery, multi-step file round trip, and budget exhaustion.
+The web UI's static assets are bundled inside the binary, so the same single
+file runs both modes.
 
 ## Pushing to GitHub
 
-The main agent cannot push to GitHub directly. Use Replit's **Git** pane in
-the workspace to commit and push, or run `git push origin main` from a shell
-after making sure your GitHub PAT has the `workflow` scope.
+The main agent cannot push directly. From the Shell tab:
+
+```bash
+git add -A
+git commit -m "Add multi-provider support, web UI, PyInstaller binary"
+git push origin main
+```
+
+If the saved credential is stale, generate a new PAT at
+https://github.com/settings/tokens (scopes: `repo` + `workflow`).

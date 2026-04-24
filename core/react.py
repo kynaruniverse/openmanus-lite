@@ -1,19 +1,16 @@
-"""ReAct-style reasoning loop.
-
-Each iteration: think → act → observe. The LLM sees the running history and
-emits one JSON step; the executor runs it and the observation feeds back into
-the next prompt. The loop ends on a ``finish`` step or when the step budget
-is reached.
-"""
+"""ReAct-style reasoning loop with optional event streaming."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import Callable, List, Optional
 
 from core.executor import Executor
 from core.llm import BudgetExceeded, LLMClient, LLMError
 from core.logging_setup import get_logger
 from core.planner import PlanError, Step, _parse_plan
+
+
+EventCallback = Optional[Callable[[dict], None]]
 
 
 @dataclass
@@ -28,7 +25,7 @@ class ReActResult:
     ok: bool
     answer: str
     trace: List[Trace] = field(default_factory=list)
-    finished: bool = False  # True when the model emitted a `finish` action
+    finished: bool = False
 
 
 SYSTEM_PROMPT = """\
@@ -96,23 +93,24 @@ def _truncate(text: str, n: int) -> str:
 
 
 class ReActLoop:
-    def __init__(
-        self,
-        llm: LLMClient,
-        executor: Executor,
-        max_steps: int = 10,
-    ) -> None:
+    def __init__(self, llm: LLMClient, executor: Executor, max_steps: int = 10) -> None:
         self._llm = llm
         self._executor = executor
         self._max_steps = max_steps
         self._log = get_logger()
 
-    def run(self, task: str) -> ReActResult:
+    def run(self, task: str, on_event: EventCallback = None) -> ReActResult:
         traces: List[Trace] = []
         last_error = ""
 
+        def emit(ev: dict) -> None:
+            if on_event:
+                on_event(ev)
+
         for i in range(1, self._max_steps + 1):
             self._log.info("ReAct iter %d/%d", i, self._max_steps)
+            emit({"type": "iter", "n": i, "max": self._max_steps})
+
             prompt = (
                 SYSTEM_PROMPT
                 .replace("{task}", task)
@@ -123,15 +121,16 @@ class ReActLoop:
                 raw = self._llm.generate(prompt)
             except BudgetExceeded as exc:
                 last_error = str(exc)
+                emit({"type": "error", "message": last_error})
                 break
             except LLMError as exc:
                 last_error = str(exc)
+                emit({"type": "error", "message": last_error})
                 break
 
             try:
                 step = self._parse_one_step(raw)
             except PlanError as exc:
-                # Feed the error back so the model can self-correct.
                 self._log.warning("Bad JSON from model: %s", exc)
                 fake_step = Step(
                     action="answer",
@@ -145,32 +144,31 @@ class ReActLoop:
                         ok=False,
                     )
                 )
+                emit({"type": "parse_error", "raw": raw[:500], "error": str(exc)})
                 continue
 
+            emit({
+                "type": "thought",
+                "n": i,
+                "text": step.params.get("thought", ""),
+                "action": step.action,
+                "params": {k: v for k, v in step.params.items() if k != "thought"},
+            })
+
             if step.action == "finish":
-                answer = str(step.params.get("text", "")).strip()
-                if not answer:
-                    answer = "(no answer text was provided)"
-                self._log.info("ReAct finished after %d step(s).", len(traces))
+                answer = str(step.params.get("text", "")).strip() or "(no answer text)"
+                emit({"type": "finish", "answer": answer})
                 return ReActResult(ok=True, answer=answer, trace=traces, finished=True)
 
             observation = self._executor.run_step(step)
-            ok = not observation.lstrip().startswith(
-                ("❌", "🛡️", "BLOCKED", "INVALID")
-            )
-            self._log.info(
-                "  → %s %s: %s",
-                step.action,
-                "OK" if ok else "FAIL",
-                _truncate(observation, 200).replace("\n", " "),
-            )
+            ok = not observation.lstrip().startswith(("❌", "🛡️", "BLOCKED", "INVALID"))
+            emit({"type": "observation", "n": i, "content": observation,
+                  "ok": ok, "action": step.action})
             traces.append(Trace(step=step, observation=observation, ok=ok))
 
-        # Exited loop without `finish`.
         if last_error:
             return ReActResult(ok=False, answer=last_error, trace=traces)
 
-        # Force a synthesis call to extract whatever answer is possible.
         return ReActResult(
             ok=False,
             answer=(
@@ -182,13 +180,9 @@ class ReActLoop:
 
     @staticmethod
     def _parse_one_step(raw: str) -> Step:
-        # Reuse the planner's robust JSON extraction by wrapping a single step
-        # into the generic plan shape.
         plan = _parse_plan(raw)
         if not plan.steps:
             raise PlanError("No step in model output.")
-        # The ReAct prompt tells the model to also include a `thought` key at
-        # the top level; preserve it inside params for traceability.
         first = plan.steps[0]
         if plan.thought and "thought" not in first.params:
             first.params["thought"] = plan.thought
