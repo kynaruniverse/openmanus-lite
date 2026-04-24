@@ -1,2 +1,0 @@
-[console_scripts]
-omx = core.main:run_from_cli
