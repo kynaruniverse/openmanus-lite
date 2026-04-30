@@ -1,8 +1,8 @@
-google-genai>=1.0.0
-python-dotenv>=1.0.0
-ddgs>=9.0.0
+google-genai>=1.74.0
+python-dotenv>=1.2.2
+ddgs>=9.14.1
 fastapi>=0.110.0
-uvicorn[standard]>=0.27.0
+uvicorn[standard]>=0.46.0
 # Optional providers (install only if you want them):
 # openai>=1.0.0
 # anthropic>=0.30.0
