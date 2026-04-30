@@ -1,7 +1,7 @@
 google-genai>=1.0.0
 python-dotenv>=1.0.0
 ddgs>=9.0.0
-fastapi>=0.110.0
+fastapi>=0.136.1
 uvicorn[standard]>=0.27.0
 # Optional providers (install only if you want them):
 # openai>=1.0.0
